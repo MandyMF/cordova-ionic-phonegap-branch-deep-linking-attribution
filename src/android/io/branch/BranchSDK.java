@@ -82,6 +82,13 @@ public class BranchSDK extends CordovaPlugin {
         this.activity.setIntent(intent);
     }
 
+    public boolean forceNewSession(CallbackContext _callbackContext) {
+        Intent intent = cordova.getActivity().getIntent();
+        intent.putExtra("branch_force_new_session", true);
+        cordova.getActivity().setIntent(intent);
+        _callbackContext.success();
+    }
+
     /**
      * <p>
      * cordova.exec() method reference.
@@ -1149,6 +1156,8 @@ public class BranchSDK extends CordovaPlugin {
                     enableLogging(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
+                } else if (this.action.equals("forceNewSession")) {
+                    forceNewSession(this.callbackContext);
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
