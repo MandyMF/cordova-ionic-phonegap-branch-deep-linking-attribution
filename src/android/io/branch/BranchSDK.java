@@ -134,6 +134,9 @@ public class BranchSDK extends CordovaPlugin {
         } else if (action.equals("initSession")) {
             cordova.getActivity().runOnUiThread(r);
             return true;
+        } else if (action.equals("forceNewSession")) {
+            cordova.getActivity().runOnUiThread(r);
+            return true;
         } else if (action.equals("setRequestMetadata")) {
             cordova.getActivity().runOnUiThread(r);
             return true;
