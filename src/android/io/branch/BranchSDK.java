@@ -1175,10 +1175,7 @@ public class BranchSDK extends CordovaPlugin {
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("forceNewSession")) {
-
-
-
-
+                    forceNewSession(this.callbackContext);
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
