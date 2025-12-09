@@ -93,18 +93,18 @@ public class BranchSDK extends CordovaPlugin {
         // Set the Branch flag to force a new session
         intent.putExtra("branch_force_new_session", true);
         // Call Branch re-initialization with a callback to return data to JS
-        Branch.sessionBuilder(activity).withCallback(new Branch.BranchReferralInitListener() {
-            @Override
-            public void onInitFinished(JSONObject referringParams, BranchError error) {
-                if (error == null) {
-                    // Return the new session’s link data to JavaScript
-                    callbackContext.success(referringParams);
-                } else {
-                    callbackContext.error(error.getMessage());
-                }
-            }
-        }).withData(intent.getData()).reInit();  // use reInit() to start a new session
-        //callbackContext.success();
+        //Branch.sessionBuilder(activity).withCallback(new Branch.BranchReferralInitListener() {
+        //    @Override
+        //    public void onInitFinished(JSONObject referringParams, BranchError error) {
+        //        if (error == null) {
+        //            // Return the new session’s link data to JavaScript
+        //            callbackContext.success(referringParams);
+        //        } else {
+        //            callbackContext.error(error.getMessage());
+        //        }
+        //    }
+        //}).withData(intent.getData()).reInit();  // use reInit() to start a new session
+        callbackContext.success();
         return true;
     }
 
