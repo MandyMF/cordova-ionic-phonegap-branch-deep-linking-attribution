@@ -83,10 +83,28 @@ public class BranchSDK extends CordovaPlugin {
     }
 
     public void forceNewSession(CallbackContext callbackContext) {
-        Intent intent = cordova.getActivity().getIntent();
+        //Intent intent = cordova.getActivity().getIntent();
+        //intent.putExtra("branch_force_new_session", true);
+        //cordova.getActivity().setIntent(intent);
+        //callbackContext.success();
+
+        Activity activity = cordova.getActivity();
+        Intent intent = activity.getIntent();
+        // Set the Branch flag to force a new session
         intent.putExtra("branch_force_new_session", true);
-        cordova.getActivity().setIntent(intent);
-        callbackContext.success();
+        // Call Branch re-initialization with a callback to return data to JS
+        Branch.sessionBuilder(activity).withCallback(new Branch.BranchReferralInitListener() {
+            @Override
+            public void onInitFinished(JSONObject referringParams, BranchError error) {
+                if (error == null) {
+                    // Return the new session’s link data to JavaScript
+                    callbackContext.success(referringParams);
+                } else {
+                    callbackContext.error(error.getMessage());
+                }
+            }
+        }).withData(intent.getData()).reInit();  // use reInit() to start a new session
+        return true;
     }
 
     /**
@@ -1157,7 +1175,10 @@ public class BranchSDK extends CordovaPlugin {
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("forceNewSession")) {
-                    forceNewSession(this.callbackContext);
+
+
+
+
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
