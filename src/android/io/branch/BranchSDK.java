@@ -82,11 +82,11 @@ public class BranchSDK extends CordovaPlugin {
         this.activity.setIntent(intent);
     }
 
-    public boolean forceNewSession(CallbackContext _callbackContext) {
+    public void forceNewSession(CallbackContext callbackContext) {
         Intent intent = cordova.getActivity().getIntent();
         intent.putExtra("branch_force_new_session", true);
         cordova.getActivity().setIntent(intent);
-        _callbackContext.success();
+        callbackContext.success();
     }
 
     /**
