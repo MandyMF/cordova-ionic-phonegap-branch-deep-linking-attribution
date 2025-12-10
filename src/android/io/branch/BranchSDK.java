@@ -82,6 +82,32 @@ public class BranchSDK extends CordovaPlugin {
         this.activity.setIntent(intent);
     }
 
+    public boolean forceNewSession(CallbackContext callbackContext) {
+        //Intent intent = cordova.getActivity().getIntent();
+        //intent.putExtra("branch_force_new_session", true);
+        //cordova.getActivity().setIntent(intent);
+        //callbackContext.success();
+
+        //Activity activity = cordova.getActivity();
+        Intent intent = this.activity.getIntent();
+        // Set the Branch flag to force a new session
+        intent.putExtra("branch_force_new_session", true);
+        // Call Branch re-initialization with a callback to return data to JS
+        //Branch.sessionBuilder(activity).withCallback(new Branch.BranchReferralInitListener() {
+        //    @Override
+        //    public void onInitFinished(JSONObject referringParams, BranchError error) {
+        //        if (error == null) {
+        //            // Return the new session’s link data to JavaScript
+        //            callbackContext.success(referringParams);
+        //        } else {
+        //            callbackContext.error(error.getMessage());
+        //        }
+        //    }
+        //}).withData(intent.getData()).reInit();  // use reInit() to start a new session
+        callbackContext.success();
+        return true;
+    }
+
     /**
      * <p>
      * cordova.exec() method reference.
@@ -106,6 +132,9 @@ public class BranchSDK extends CordovaPlugin {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("initSession")) {
+            cordova.getActivity().runOnUiThread(r);
+            return true;
+        } else if (action.equals("forceNewSession")) {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("setRequestMetadata")) {
@@ -1149,6 +1178,8 @@ public class BranchSDK extends CordovaPlugin {
                     enableLogging(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
+                } else if (this.action.equals("forceNewSession")) {
+                    forceNewSession(this.callbackContext);
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
