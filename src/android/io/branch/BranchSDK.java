@@ -31,6 +31,7 @@ import io.branch.referral.util.ContentMetadata;
 import io.branch.referral.util.CurrencyType;
 import io.branch.referral.util.ShareSheetStyle;
 import io.branch.referral.Defines.BranchAttributionLevel;
+import io.branch.referral.BranchSessionBuilder;
 
 
 public class BranchSDK extends CordovaPlugin {
