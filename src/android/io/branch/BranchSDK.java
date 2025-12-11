@@ -82,6 +82,53 @@ public class BranchSDK extends CordovaPlugin {
         this.activity.setIntent(intent);
     }
 
+    public boolean forceNewSession(CallbackContext callbackContext) {
+        this.activity = this.cordova.getActivity();
+        Intent latestIntent = activity.getIntent();  // Current intent (possibly updated via onNewIntent)
+        
+        // 1. Set the flag to force new session
+        latestIntent.putExtra("branch_force_new_session", true);
+        
+        // 2. Prepare Branch reInit with a callback
+        BranchSessionBuilder builder = Branch.sessionBuilder(activity)
+            .withCallback(new Branch.BranchReferralInitListener() {
+                @Override 
+                public void onInitFinished(JSONObject referringParams, BranchError error) {
+                    if (error == null) {
+                        // Deep link data retrieved successfully
+                        if (referringParams != null) {
+                            callbackContext.success(referringParams);
+                        } else {
+                            // No referring params (empty data)
+                            callbackContext.success(new JSONObject());
+                        }
+                    } else {
+                        // If already initialized error, get latest params as fallback
+                        if (error.getErrorCode() == BranchError.ERR_BRANCH_ALREADY_INITIALIZED) {
+                            JSONObject lastParams = Branch.getInstance().getLatestReferringParams();
+                            callbackContext.success(lastParams);  // return last known deep link (may be empty)
+                        } else {
+                            // Return the error message
+                            JSONObject errObj = new JSONObject();
+                            errObj.put("error", error.getMessage());
+                            callbackContext.error(errObj);
+                        }
+                    }
+                }
+            });
+        
+        // 3. If deep link URI is present in the intent, pass it to Branch
+        Uri data = latestIntent.getData();
+        if (data != null) {
+            builder.withData(data);
+        }
+        
+        // 4. Call reInit() to start a new Branch session
+        builder.reInit();  
+        
+        return true;  // Signal Cordova that we’ll send the result asynchronously
+    }
+
     /**
      * <p>
      * cordova.exec() method reference.
@@ -106,6 +153,9 @@ public class BranchSDK extends CordovaPlugin {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("initSession")) {
+            cordova.getActivity().runOnUiThread(r);
+            return true;
+        } else if (action.equals("forceNewSession")) {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("setRequestMetadata")) {
@@ -1149,6 +1199,8 @@ public class BranchSDK extends CordovaPlugin {
                     enableLogging(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
+                } else if (this.action.equals("forceNewSession")) {
+                    forceNewSession(this.callbackContext);
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
