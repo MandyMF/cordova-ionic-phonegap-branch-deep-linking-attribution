@@ -160,6 +160,10 @@ Branch.prototype.setIdentity = function setIdentity(identity) {
   return executeReject("Please set an identity");
 };
 
+Branch.prototype.forceNewSession = function forceNewSession() {
+  return execute("forceNewSession");
+};
+
 Branch.prototype.logout = function logout() {
   return execute("logout");
 };

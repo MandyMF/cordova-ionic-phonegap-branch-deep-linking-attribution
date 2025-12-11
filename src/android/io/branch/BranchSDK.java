@@ -82,6 +82,31 @@ public class BranchSDK extends CordovaPlugin {
         this.activity.setIntent(intent);
     }
 
+    public boolean forceNewSession(CallbackContext callbackContext) {
+        // Same pattern as initSession()
+        this.activity = this.cordova.getActivity();
+    
+        Intent intent = this.activity.getIntent();
+        Uri data = intent.getData();
+    
+        // Optional: keep deepLinkUrl in sync, just like initSession does
+        if (data != null && data.isHierarchical()) {
+            this.deepLinkUrl = data.toString();
+        }
+    
+        // 1. Mark the intent to force a new Branch session
+        intent.putExtra("branch_force_new_session", true);
+    
+        // 2. Re-init the Branch session using the same SessionListener
+        Branch.sessionBuilder(activity)
+                .withData(data) // can be null, SDK handles it
+                .withCallback(new SessionListener(callbackContext))
+                .reInit();      // <-- key difference vs initSession()
+    
+        // We’re returning asynchronously via callbackContext
+        return true;
+    }
+
     /**
      * <p>
      * cordova.exec() method reference.
@@ -106,6 +131,9 @@ public class BranchSDK extends CordovaPlugin {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("initSession")) {
+            cordova.getActivity().runOnUiThread(r);
+            return true;
+        } else if (action.equals("forceNewSession")) {
             cordova.getActivity().runOnUiThread(r);
             return true;
         } else if (action.equals("setRequestMetadata")) {
@@ -1149,6 +1177,8 @@ public class BranchSDK extends CordovaPlugin {
                     enableLogging(this.args.getBoolean(0), this.callbackContext);
                 } else if (this.action.equals("disableTracking")) {
                     disableTracking(this.args.getBoolean(0), this.callbackContext);
+                } else if (this.action.equals("forceNewSession")) {
+                    forceNewSession(this.callbackContext);
                 } else if (this.action.equals("initSession")) {
                     initSession(this.callbackContext);
                 } else if (this.action.equals("setRequestMetadata")) {
