@@ -84,36 +84,30 @@ public class BranchSDK extends CordovaPlugin {
 
     public boolean forceNewSession(CallbackContext callbackContext) {
         this.activity = this.cordova.getActivity();
-        Intent intent = this.activity.getIntent();  // Current intent (possibly updated via onNewIntent)
-        
-        // 1. Set the flag to force new session
+        Intent intent = this.activity.getIntent();
+    
+        // Step 1: Mark the intent to force a new Branch session
         intent.putExtra("branch_force_new_session", true);
-        
-        // Step 2: Re-initialize the session using legacy initSession pattern
-        Branch.getInstance().initSession(new Branch.BranchReferralInitListener() {
+    
+        // Step 2: Get URI from intent (may be null)
+        Uri dataUri = intent.getData();
+    
+        // Step 3: Re-init session using the static initSession method
+        Branch.initSession(this.activity, new Branch.BranchReferralInitListener() {
             @Override
             public void onInitFinished(JSONObject referringParams, BranchError error) {
                 if (error == null) {
-                    if (referringParams != null) {
-                        callbackContext.success(referringParams);
-                    } else {
-                        callbackContext.success(new JSONObject()); // No referring data
-                    }
+                    callbackContext.success(referringParams != null ? referringParams : new JSONObject());
                 } else if (error.getErrorCode() == BranchError.ERR_BRANCH_ALREADY_INITIALIZED) {
-                    // Fallback: return cached params if already initialized
                     JSONObject latest = Branch.getInstance().getLatestReferringParams();
-                    if (latest != null) {
-                        callbackContext.success(latest);
-                    } else {
-                        callbackContext.success(new JSONObject());
-                    }
+                    callbackContext.success(latest != null ? latest : new JSONObject());
                 } else {
                     callbackContext.error(error.getMessage());
                 }
             }
-        }, intent.getData()); // Attach URI if present 
-        
-        return true;  // Signal Cordova that we’ll send the result asynchronously
+        }, dataUri);
+    
+        return true;
     }
 
     /**
