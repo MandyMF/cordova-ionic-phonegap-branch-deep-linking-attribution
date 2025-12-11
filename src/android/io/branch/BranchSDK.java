@@ -31,7 +31,6 @@ import io.branch.referral.util.ContentMetadata;
 import io.branch.referral.util.CurrencyType;
 import io.branch.referral.util.ShareSheetStyle;
 import io.branch.referral.Defines.BranchAttributionLevel;
-import io.branch.referral.BranchSessionBuilder;
 
 
 public class BranchSDK extends CordovaPlugin {
@@ -90,42 +89,26 @@ public class BranchSDK extends CordovaPlugin {
         // 1. Set the flag to force new session
         latestIntent.putExtra("branch_force_new_session", true);
         
-        // 2. Prepare Branch reInit with a callback
-        BranchSessionBuilder builder = Branch.sessionBuilder(activity)
-            .withCallback(new Branch.BranchReferralInitListener() {
-                @Override 
-                public void onInitFinished(JSONObject referringParams, BranchError error) {
-                    if (error == null) {
-                        // Deep link data retrieved successfully
-                        if (referringParams != null) {
-                            callbackContext.success(referringParams);
-                        } else {
-                            // No referring params (empty data)
-                            callbackContext.success(new JSONObject());
-                        }
+        Branch.getInstance().initSession(new Branch.BranchReferralInitListener() {
+            @Override
+            public void onInitFinished(JSONObject referringParams, BranchError error) {
+                if (error == null) {
+                    if (referringParams != null) {
+                        callbackContext.success(referringParams);
                     } else {
-                        // If already initialized error, get latest params as fallback
-                        if (error.getErrorCode() == BranchError.ERR_BRANCH_ALREADY_INITIALIZED) {
-                            JSONObject lastParams = Branch.getInstance().getLatestReferringParams();
-                            callbackContext.success(lastParams);  // return last known deep link (may be empty)
-                        } else {
-                            // Return the error message
-                            JSONObject errObj = new JSONObject();
-                            errObj.put("error", error.getMessage());
-                            callbackContext.error(errObj);
-                        }
+                        callbackContext.success(new JSONObject()); // Empty success
+                    }
+                } else {
+                    // If already initialized, try fallback to latest referring params
+                    if (error.getErrorCode() == BranchError.ERR_BRANCH_ALREADY_INITIALIZED) {
+                        JSONObject latest = Branch.getInstance().getLatestReferringParams();
+                        callbackContext.success(latest);
+                    } else {
+                        callbackContext.error(error.getMessage());
                     }
                 }
-            });
-        
-        // 3. If deep link URI is present in the intent, pass it to Branch
-        Uri data = latestIntent.getData();
-        if (data != null) {
-            builder.withData(data);
-        }
-        
-        // 4. Call reInit() to start a new Branch session
-        builder.reInit();  
+            }
+        }, intent.getData());  // Include URI if available  
         
         return true;  // Signal Cordova that we’ll send the result asynchronously
     }
