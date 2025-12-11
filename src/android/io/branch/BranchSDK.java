@@ -83,30 +83,27 @@ public class BranchSDK extends CordovaPlugin {
     }
 
     public boolean forceNewSession(CallbackContext callbackContext) {
+        // Same pattern as initSession()
         this.activity = this.cordova.getActivity();
-        Intent intent = this.activity.getIntent();
     
-        // Step 1: Mark the intent to force a new Branch session
+        Intent intent = this.activity.getIntent();
+        Uri data = intent.getData();
+    
+        // Optional: keep deepLinkUrl in sync, just like initSession does
+        if (data != null && data.isHierarchical()) {
+            this.deepLinkUrl = data.toString();
+        }
+    
+        // 1. Mark the intent to force a new Branch session
         intent.putExtra("branch_force_new_session", true);
     
-        // Step 2: Get URI from intent (may be null)
-        Uri dataUri = intent.getData();
+        // 2. Re-init the Branch session using the same SessionListener
+        Branch.sessionBuilder(activity)
+                .withData(data) // can be null, SDK handles it
+                .withCallback(new SessionListener(callbackContext))
+                .reInit();      // <-- key difference vs initSession()
     
-        // Step 3: Re-init session using the static initSession method
-        Branch.initSession(this.activity, new Branch.BranchReferralInitListener() {
-            @Override
-            public void onInitFinished(JSONObject referringParams, BranchError error) {
-                if (error == null) {
-                    callbackContext.success(referringParams != null ? referringParams : new JSONObject());
-                } else if (error.getErrorCode() == BranchError.ERR_BRANCH_ALREADY_INITIALIZED) {
-                    JSONObject latest = Branch.getInstance().getLatestReferringParams();
-                    callbackContext.success(latest != null ? latest : new JSONObject());
-                } else {
-                    callbackContext.error(error.getMessage());
-                }
-            }
-        }, dataUri);
-    
+        // We’re returning asynchronously via callbackContext
         return true;
     }
 
