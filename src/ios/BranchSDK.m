@@ -135,6 +135,70 @@ NSString * const pluginVersion = @"%BRANCH_PLUGIN_VERSION%";
   }];
 }
 
+- (void)forceNewSession:(CDVInvokedUrlCommand*)command
+{
+  // Optional but symmetric with initSession:
+  [[Branch getInstance] registerPluginName:@"CordovaIonic" version:pluginVersion];
+
+  [[Branch getInstance] initSessionWithLaunchOptions:nil
+                        andRegisterDeepLinkHandler:^(NSDictionary *params, NSError *error) {
+
+    NSString *resultString = nil;
+    CDVPluginResult *pluginResult = nil;
+
+    if (!error) {
+      if (params != nil && [params count] > 0) {
+
+        NSError *err;
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:params
+                                                           options:0
+                                                             error:&err];
+
+        if (!jsonData) {
+          NSLog(@"Parsing Error: %@", [err localizedDescription]);
+          NSDictionary *errorDict =
+            [NSDictionary dictionaryWithObjectsAndKeys:[err localizedDescription], @"error", nil];
+          NSData *errorJSON =
+            [NSJSONSerialization dataWithJSONObject:errorDict
+                                            options:NSJSONWritingPrettyPrinted
+                                              error:&err];
+
+          resultString = [[NSString alloc] initWithData:errorJSON
+                                               encoding:NSUTF8StringEncoding];
+          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                          messageAsString:resultString];
+        } else {
+          resultString = [[NSString alloc] initWithData:jsonData
+                                               encoding:NSUTF8StringEncoding];
+          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                       messageAsDictionary:params];
+        }
+      }
+      // NOTE: like your initSession:, if params is nil/empty, pluginResult stays nil.
+      // If you ever want it to always resolve, we can adjust this to send an empty dict instead.
+    } else {
+      NSLog(@"forceNewSession Init Error: %@", [error localizedDescription]);
+
+      NSDictionary *errorDict =
+        [NSDictionary dictionaryWithObjectsAndKeys:[error localizedDescription], @"error", nil];
+      NSData *errorJSON =
+        [NSJSONSerialization dataWithJSONObject:errorDict
+                                        options:NSJSONWritingPrettyPrinted
+                                          error:&error];
+
+      resultString = [[NSString alloc] initWithData:errorJSON
+                                           encoding:NSUTF8StringEncoding];
+      pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                      messageAsString:resultString];
+    }
+
+    if (command != nil && pluginResult != nil) {
+      [self.commandDelegate sendPluginResult:pluginResult
+                                  callbackId:command.callbackId];
+    }
+  }];
+}
+
 - (void)setRequestMetadata:(CDVInvokedUrlCommand*)command
 {
 

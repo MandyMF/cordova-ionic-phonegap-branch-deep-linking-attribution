@@ -55,5 +55,9 @@
 // Branch Query Methods
 - (void)lastAttributedTouchData:(CDVInvokedUrlCommand *)command;
 
+// New force branch Method
+- (void)forceNewSession:(CDVInvokedUrlCommand *)command;
+
+
 
 @end
