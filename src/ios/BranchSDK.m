@@ -137,66 +137,44 @@ NSString * const pluginVersion = @"%BRANCH_PLUGIN_VERSION%";
 
 - (void)forceNewSession:(CDVInvokedUrlCommand*)command
 {
-  // Optional but symmetric with initSession:
-  [[Branch getInstance] registerPluginName:@"CordovaIonic" version:pluginVersion];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[Branch getInstance] registerPluginName:@"CordovaIonic" version:pluginVersion];
 
-  [[Branch getInstance] initSessionWithLaunchOptions:nil
-                        andRegisterDeepLinkHandler:^(NSDictionary *params, NSError *error) {
+    [[Branch getInstance] logoutWithCallback:^(BOOL changed, NSError * _Nullable logoutError) {
 
-    NSString *resultString = nil;
-    CDVPluginResult *pluginResult = nil;
-
-    if (!error) {
-      if (params != nil && [params count] > 0) {
-
-        NSError *err;
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:params
-                                                           options:0
-                                                             error:&err];
-
-        if (!jsonData) {
-          NSLog(@"Parsing Error: %@", [err localizedDescription]);
-          NSDictionary *errorDict =
-            [NSDictionary dictionaryWithObjectsAndKeys:[err localizedDescription], @"error", nil];
-          NSData *errorJSON =
-            [NSJSONSerialization dataWithJSONObject:errorDict
-                                            options:NSJSONWritingPrettyPrinted
-                                              error:&err];
-
-          resultString = [[NSString alloc] initWithData:errorJSON
-                                               encoding:NSUTF8StringEncoding];
-          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                          messageAsString:resultString];
-        } else {
-          resultString = [[NSString alloc] initWithData:jsonData
-                                               encoding:NSUTF8StringEncoding];
-          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                       messageAsDictionary:params];
-        }
+      if (logoutError) {
+        NSLog(@"Branch logout error (continuing anyway): %@", logoutError.localizedDescription);
       }
-      // NOTE: like your initSession:, if params is nil/empty, pluginResult stays nil.
-      // If you ever want it to always resolve, we can adjust this to send an empty dict instead.
-    } else {
-      NSLog(@"forceNewSession Init Error: %@", [error localizedDescription]);
 
-      NSDictionary *errorDict =
-        [NSDictionary dictionaryWithObjectsAndKeys:[error localizedDescription], @"error", nil];
-      NSData *errorJSON =
-        [NSJSONSerialization dataWithJSONObject:errorDict
-                                        options:NSJSONWritingPrettyPrinted
-                                          error:&error];
+      [[Branch getInstance] initSessionWithLaunchOptions:nil
+                              andRegisterDeepLinkHandler:^(NSDictionary *params, NSError *error) {
 
-      resultString = [[NSString alloc] initWithData:errorJSON
-                                           encoding:NSUTF8StringEncoding];
-      pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                      messageAsString:resultString];
-    }
+        if (params[@"~referring_link"]) {
+          self.deepLinkUrl = params[@"~referring_link"];
+        }
 
-    if (command != nil && pluginResult != nil) {
-      [self.commandDelegate sendPluginResult:pluginResult
-                                  callbackId:command.callbackId];
-    }
-  }];
+        CDVPluginResult *pluginResult = nil;
+
+        if (error) {
+          NSDictionary *errorDict = @{ @"error": error.localizedDescription ?: @"Unknown error" };
+          NSError *jsonErr = nil;
+          NSData *errorJSON = [NSJSONSerialization dataWithJSONObject:errorDict
+                                                             options:NSJSONWritingPrettyPrinted
+                                                               error:&jsonErr];
+          NSString *resultString = errorJSON
+            ? [[NSString alloc] initWithData:errorJSON encoding:NSUTF8StringEncoding]
+            : (error.localizedDescription ?: @"Unknown error");
+
+          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:resultString];
+        } else {
+          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                       messageAsDictionary:(params ?: @{})];
+        }
+
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+      }];
+    }];
+  });
 }
 
 - (void)setRequestMetadata:(CDVInvokedUrlCommand*)command
