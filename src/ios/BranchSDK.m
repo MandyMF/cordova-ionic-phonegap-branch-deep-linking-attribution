@@ -69,19 +69,46 @@ NSString * const pluginVersion = @"%BRANCH_PLUGIN_VERSION%";
 
 - (void)continueUserActivity:(CDVInvokedUrlCommand*)command
 {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *activityType = nil;
+        if (command.arguments.count > 0 && [command.arguments[0] isKindOfClass:[NSString class]]) {
+            activityType = (NSString *)command.arguments[0];
+        }
 
-  NSString *activityType = (NSString *)[command.arguments objectAtIndex:0];
-  NSDictionary *userInfo = (NSDictionary*)[command.arguments objectAtIndex:1];
+        NSDictionary *userInfo = nil;
+        if (command.arguments.count > 1 && [command.arguments[1] isKindOfClass:[NSDictionary class]]) {
+            userInfo = (NSDictionary *)command.arguments[1];
+        }
 
-  NSUserActivity *userActivity = [[NSUserActivity alloc] initWithActivityType:activityType];
-  [userActivity setUserInfo:userInfo];
+        NSString *optionalURLString = nil;
+        if (command.arguments.count > 2 && [command.arguments[2] isKindOfClass:[NSString class]]) {
+            optionalURLString = (NSString *)command.arguments[2];
+        }
 
-  if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
-    self.deepLinkUrl = [userActivity.webpageURL absoluteString];
-  }
+        // Default to browsing web if caller passed nil/empty.
+        if (activityType.length == 0) {
+            activityType = NSUserActivityTypeBrowsingWeb;
+        }
 
-  [[Branch getInstance] continueUserActivity:userActivity];
+        NSUserActivity *userActivity = [[NSUserActivity alloc] initWithActivityType:activityType];
+
+        if (userInfo) {
+            userActivity.userInfo = userInfo;
+        }
+
+        // If we're simulating a Universal Link, set webpageURL explicitly when provided.
+        if ([activityType isEqualToString:NSUserActivityTypeBrowsingWeb] && optionalURLString.length > 0) {
+            NSURL *webURL = [NSURL URLWithString:optionalURLString];
+            if (webURL) {
+                userActivity.webpageURL = webURL;
+                self.deepLinkUrl = webURL.absoluteString;
+            }
+        }
+
+        [[Branch getInstance] continueUserActivity:userActivity];
+    });
 }
+
 
 #pragma mark - Public APIs
 #pragma mark - Branch Basic Methods
@@ -135,47 +162,121 @@ NSString * const pluginVersion = @"%BRANCH_PLUGIN_VERSION%";
   }];
 }
 
+#pragma mark - Helpers
+
+/// Minimal helper: builds a launchOptions dictionary.
+/// - If `url` is non-nil, includes UIApplicationLaunchOptionsURLKey.
+/// - Always returns a dictionary (never nil) to avoid nil-handling edge cases in SDK code paths.
+- (NSDictionary *)bnc_launchOptionsForURL:(NSURL * _Nullable)url
+{
+    if (url) {
+        return @{ UIApplicationLaunchOptionsURLKey: url };
+    }
+    return @{};
+}
+
+
 - (void)forceNewSession:(CDVInvokedUrlCommand*)command
 {
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [[Branch getInstance] registerPluginName:@"CordovaIonic" version:pluginVersion];
-
-    [[Branch getInstance] logoutWithCallback:^(BOOL changed, NSError * _Nullable logoutError) {
-
-      if (logoutError) {
-        NSLog(@"Branch logout error (continuing anyway): %@", logoutError.localizedDescription);
-      }
-
-      [[Branch getInstance] initSessionWithLaunchOptions:nil
-                              andRegisterDeepLinkHandler:^(NSDictionary *params, NSError *error) {
-
-        if (params[@"~referring_link"]) {
-          self.deepLinkUrl = params[@"~referring_link"];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // 1) Resolve input URL string (prefer explicit arg[0], else self.deepLinkUrl).
+        NSString *explicitURLString = nil;
+        if (command.arguments.count > 0 && [command.arguments[0] isKindOfClass:[NSString class]]) {
+            explicitURLString = (NSString *)command.arguments[0];
         }
 
-        CDVPluginResult *pluginResult = nil;
+        NSString *resolvedURLString = (explicitURLString.length > 0)
+            ? explicitURLString
+            : self.deepLinkUrl;
 
-        if (error) {
-          NSDictionary *errorDict = @{ @"error": error.localizedDescription ?: @"Unknown error" };
-          NSError *jsonErr = nil;
-          NSData *errorJSON = [NSJSONSerialization dataWithJSONObject:errorDict
-                                                             options:NSJSONWritingPrettyPrinted
-                                                               error:&jsonErr];
-          NSString *resultString = errorJSON
-            ? [[NSString alloc] initWithData:errorJSON encoding:NSUTF8StringEncoding]
-            : (error.localizedDescription ?: @"Unknown error");
+        NSURL *resolvedURL = (resolvedURLString.length > 0)
+            ? [NSURL URLWithString:resolvedURLString]
+            : nil;
 
-          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:resultString];
+        // If a URL string was provided but is not parseable, fail fast with ERROR.
+        if (resolvedURLString.length > 0 && resolvedURL == nil) {
+            NSString *errMsg = [NSString stringWithFormat:@"Invalid URL string: %@", resolvedURLString];
+            CDVPluginResult *pluginResult =
+                [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:errMsg];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            return;
+        }
+
+        // Persist the chosen URL back onto self.deepLinkUrl (useful for subsequent calls without args).
+        if (resolvedURLString.length > 0) {
+            self.deepLinkUrl = resolvedURLString;
+        }
+
+        // 2) Build launchOptions (URLKey only when URL exists).
+        NSDictionary *launchOptions = [self bnc_launchOptionsForURL:resolvedURL];
+
+        // 3) Register plugin name/version (kept consistent with existing initSession pattern).
+        Branch *branch = [Branch getInstance];
+        [branch registerPluginName:@"CordovaIonic" version:pluginVersion];
+
+        // Branch initSession callbacks can occur multiple times; ensure we respond only once.
+        __block BOOL didRespondToJS = NO;
+
+        // If we have a URL, initSession may callback immediately with old params before we trigger a deep link restart.
+        // We ignore callbacks until after we trigger handleDeepLinkWithNewSession.
+        __block BOOL didTriggerDeepLinkRestart = NO;
+
+        // 4) Register deep link handler that will return params (or error) back to JS.
+        [branch initSessionWithLaunchOptions:launchOptions
+                andRegisterDeepLinkHandler:^(NSDictionary *params, NSError *error) {
+
+            // Ensure all Cordova responses go out on main.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (didRespondToJS) {
+                    return;
+                }
+
+                // If a URL-driven restart is intended, ignore any callback that happens
+                // before we actually trigger the restart.
+                if (resolvedURL != nil && !didTriggerDeepLinkRestart) {
+                    return;
+                }
+
+                didRespondToJS = YES;
+
+                if (error) {
+                    NSString *msg = error.localizedDescription ?: @"Branch initSession failed with an unknown error.";
+                    CDVPluginResult *pluginResult =
+                        [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:msg];
+                    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    return;
+                }
+
+                NSDictionary *safeParams = (params && [params isKindOfClass:[NSDictionary class]]) ? params : @{};
+
+                // If Branch provides a referring link, prefer storing it as the current deepLinkUrl
+                // (useful if JS calls forceNewSession() later without passing a URL).
+                id referring = safeParams[@"~referring_link"];
+                if ([referring isKindOfClass:[NSString class]] && [(NSString *)referring length] > 0) {
+                    self.deepLinkUrl = (NSString *)referring;
+                }
+
+                CDVPluginResult *pluginResult =
+                    [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:safeParams];
+
+                [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            });
+        }];
+
+        // 5) If a URL is present, explicitly force Branch to treat it as a new deep link session now.
+        // Per Branch SDK source, handleDeepLinkWithNewSession currently routes to handleDeepLink and
+        // resets initialization status to allow foreground links to callback, then triggers a new open. citeturn30view0turn28view0
+        if (resolvedURL != nil) {
+            didTriggerDeepLinkRestart = YES;
+            [branch handleDeepLinkWithNewSession:resolvedURL];
         } else {
-          pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                       messageAsDictionary:(params ?: @{})];
+            // No URL available: allow the initSession call above to behave like a fresh open attempt.
+            // (We intentionally do not logout.)
+            didTriggerDeepLinkRestart = YES;
         }
-
-        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
-      }];
-    }];
-  });
+    });
 }
+
 
 - (void)setRequestMetadata:(CDVInvokedUrlCommand*)command
 {
